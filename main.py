@@ -39,7 +39,6 @@ companies_universe = {
 }
 
 def get_val(df, row_names, col):
-    """Helper to find a value in a Pandas DataFrame regardless of exact naming."""
     if df is None or df.empty: return 0
     for name in row_names:
         if name in df.index:
@@ -80,10 +79,8 @@ def get_10_year_history(ticker_symbol, stock):
                     history_text += f"\nYear {year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
                     history_data.append({
                         'year': year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq,
-                        'Revenue': round(revenue / 10000000, 1),
-                        'EBIT': round(ebit / 10000000, 1),
-                        'Net_Income': round(net_income / 10000000, 1),
-                        'Total_Debt': round(total_debt / 10000000, 1),
+                        'Revenue': round(revenue / 10000000, 1), 'EBIT': round(ebit / 10000000, 1),
+                        'Net_Income': round(net_income / 10000000, 1), 'Total_Debt': round(total_debt / 10000000, 1),
                         'Equity': round(total_equity / 10000000, 1)
                     })
                 except:
@@ -98,30 +95,22 @@ def get_10_year_history(ticker_symbol, stock):
     try:
         income_stmt = stock.financials
         balance_sheet = stock.balance_sheet
-        
-        if income_stmt.empty or balance_sheet.empty:
-            print("❌ Yahoo Finance returned empty statements for", ticker_symbol)
-            return history_text, history_data
+        if income_stmt.empty or balance_sheet.empty: return history_text, history_data
             
         for col in income_stmt.columns[:5]:
             try:
-                # FIX: Ensure we extract the year as an integer
-                if hasattr(col, 'year'):
-                    year = col.year
-                else:
-                    # Fallback if col is a string
-                    year = int(str(col)[:4])
+                if hasattr(col, 'year'): year = col.year
+                else: year = int(str(col)[:4])
                 
                 revenue = get_val(income_stmt, ['Total Revenue', 'Operating Revenue', 'Revenue'], col)
                 ebit = get_val(income_stmt, ['Operating Income', 'EBIT', 'Ebit'], col)
                 net_income = get_val(income_stmt, ['Net Income', 'Net Income Common Stockholders'], col)
-                
                 total_debt = get_val(balance_sheet, ['Total Debt', 'Long Term Debt'], col)
                 total_equity = get_val(balance_sheet, ['Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity'], col)
                 current_liab = get_val(balance_sheet, ['Current Liabilities'], col)
                 total_assets = get_val(balance_sheet, ['Total Assets'], col)
                 
-                if total_equity == 0: total_equity = 1 # Prevent division by zero
+                if total_equity == 0: total_equity = 1
                 
                 roce = round((ebit / (total_assets - current_liab)) * 100, 1) if (total_assets - current_liab) > 0 else 0
                 debt_eq = round(total_debt / total_equity, 2)
@@ -130,14 +119,11 @@ def get_10_year_history(ticker_symbol, stock):
                 history_text += f"\nYear {year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
                 history_data.append({
                     'year': year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq,
-                    'Revenue': round(revenue / 10000000, 1),
-                    'EBIT': round(ebit / 10000000, 1),
-                    'Net_Income': round(net_income / 10000000, 1),
-                    'Total_Debt': round(total_debt / 10000000, 1),
+                    'Revenue': round(revenue / 10000000, 1), 'EBIT': round(ebit / 10000000, 1),
+                    'Net_Income': round(net_income / 10000000, 1), 'Total_Debt': round(total_debt / 10000000, 1),
                     'Equity': round(total_equity / 10000000, 1)
                 })
             except Exception as e:
-                print(f"Error parsing Yahoo year {col}: {e}")
                 continue
     except Exception as e:
         print(f"❌ Yahoo Finance completely failed: {e}")
@@ -149,17 +135,13 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
     stock = yf.Ticker(ticker_symbol)
     info = stock.info
     live_data = {
-        'price': info.get('currentPrice', 0),
-        'pe_ratio': info.get('trailingPE', 0),
-        'pb_ratio': info.get('priceToBook', 0),
-        'dividend_yield': info.get('dividendYield', 0)
+        'price': info.get('currentPrice', 0), 'pe_ratio': info.get('trailingPE', 0),
+        'pb_ratio': info.get('priceToBook', 0), 'dividend_yield': info.get('dividendYield', 0)
     }
     
     history_text, history_data = get_10_year_history(ticker_symbol, stock)
 
     prompt1 = f"You are a rational value investor in the style of Warren Buffett. Analyze {name}. Current Price: {live_data['price']}, P/E: {live_data['pe_ratio']}, Div Yield: {live_data['dividend_yield']}. 10-Year Historical Trends: {history_text}. Write a 4-paragraph thesis. Paragraph 1: Moat & Business Quality. Paragraph 2: Financial Health & Capital Allocation. Paragraph 3: Valuation Rationality. Paragraph 4: Value Chain & Industry Structure."
-    
-    # OPTIMIZATION: Using Llama 3.1 8B to avoid the 429 rate limit errors. It is 5x faster and has massive free limits.
     thesis = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt1}], model="llama3-8b-8192").choices[0].message.content
 
     query = urllib.parse.quote(f"{name} India stock")
@@ -175,7 +157,7 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
     prompt2 = f"You are a rational value investor. Analyze market pulse for {name}. News Sentiment: {avg_score:.2f} ({sentiment_label}). Headlines: {headlines[:5]}. Macro Risks: {macro_tags}. Write a 2-paragraph summary on Market Pulse and Macro Risks."
     pulse = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt2}], model="llama3-8b-8192").choices[0].message.content
 
-    # Red/Green Flag Engine
+    # Red/Green Flag Engine (Converted to simple text strings)
     red_flags = []
     green_flags = []
     if history_data and len(history_data) > 0:
@@ -186,4 +168,32 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
         
         if latest['Debt'] < 0.5: green_flags.append("Low Debt/Equity (<0.5)")
         if latest['ROCE'] > 20: green_flags.append("Excellent ROCE (>20%)")
-        if latest['Margin'] > 10: green_flags.append
+        if latest['Margin'] > 10: green_flags.append("Healthy Net Margin (>10%)")
+
+    # Convert lists to comma-separated strings for flawless DB insertion
+    red_flags_str = ", ".join(red_flags) if red_flags else "None"
+    green_flags_str = ", ".join(green_flags) if green_flags else "None"
+
+    data_to_save = {
+        'ticker': ticker_symbol, 'name': name, 'live_price': live_data['price'],
+        'pe_ratio': live_data['pe_ratio'], 'pb_ratio': live_data['pb_ratio'],
+        'dividend_yield': live_data['dividend_yield'], 'history_summary': history_text,
+        'historical_data': history_data, 
+        'news_sentiment_score': avg_score, 'news_sentiment_label': sentiment_label,
+        'macro_tags': macro_tags, 'buffett_thesis': thesis, 'market_pulse': pulse,
+        'red_flags': red_flags_str, 'green_flags': green_flags_str
+    }
+    
+    try:
+        supabase.table("company_reports").upsert(data_to_save).execute()
+        print(f"✅ {name} saved to database successfully!")
+    except Exception as e:
+        print(f"❌ DATABASE SAVE ERROR for {name}: {e}")
+
+if __name__ == "__main__":
+    for ticker, data in companies_universe.items():
+        try:
+            get_all_data_and_save(ticker, data['name'], data['macro_tags'])
+            time.sleep(2)
+        except Exception as e:
+            print(f"Error processing {data['name']}: {e}")
