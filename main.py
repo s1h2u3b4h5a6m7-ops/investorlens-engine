@@ -216,6 +216,10 @@ if __name__ == "__main__":
     for ticker, data in companies_universe.items():
         try:
             get_all_data_and_save(ticker, data['name'], data['macro_tags'])
-            time.sleep(2)
+            # Increased delay to 10 seconds to respect Groq's 6000 tokens/minute limit
+            time.sleep(10) 
         except Exception as e:
             print(f"Error processing {data['name']}: {e}")
+            # If it fails, wait 60 seconds to reset the rate limit, then continue
+            print("Waiting 60 seconds to reset rate limits...")
+            time.sleep(60)
