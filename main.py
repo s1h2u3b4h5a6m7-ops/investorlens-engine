@@ -137,8 +137,8 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
         # 2. 10-Year Historical Data (Using FMP, fallback to Yahoo)
     history_text, history_data = get_10_year_history(ticker_symbol, stock)
 
-    # 3. AI Buffett Thesis (Now fed with 10 years of data!)
-    prompt1 = f"You are a rational value investor in the style of Warren Buffett. Analyze {name}. Current Price: {live_data['price']}, P/E: {live_data['pe_ratio']}, Div Yield: {live_data['dividend_yield']}. 10-Year Historical Trends: {history_text}. Write a 3-paragraph thesis on Moat, Financial Health, and Valuation."
+        # 3. AI Buffett Thesis (Now includes Moat & Value Chain)
+    prompt1 = f"You are a rational value investor in the style of Warren Buffett. Analyze {name}. Current Price: {live_data['price']}, P/E: {live_data['pe_ratio']}, Div Yield: {live_data['dividend_yield']}. 10-Year Historical Trends: {history_text}. Write a 4-paragraph thesis. Paragraph 1: Moat & Business Quality (based on margins and ROCE). Paragraph 2: Financial Health & Capital Allocation (based on debt and growth). Paragraph 3: Valuation Rationality (based on P/E and P/B). Paragraph 4: Value Chain & Industry Structure (Where does this company sit between raw materials and the end customer? What gives it pricing power?)."
     thesis = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt1}], model="llama-3.3-70b-versatile").choices[0].message.content
 
     # 4. News & Sentiment (Unchanged)
