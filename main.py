@@ -40,44 +40,71 @@ companies_universe = {
     'WIPRO.NS': {'name': 'Wipro', 'sector': 'IT', 'macro_tags': ['INR/USD', 'US Tech Spending', 'AI Disruption Risk', 'US Fed Rates']}
 }
 
-def get_10_year_history(ticker_symbol):
-    """Fetches 10 years of financial history from Financial Modeling Prep."""
+def get_10_year_history(ticker_symbol, stock):
+    """Fetches 10 years of history from FMP. Falls back to 4 years of Yahoo if FMP fails."""
     history_text = ""
     history_data = []
     
-    # FMP API URLs for Income Statement and Balance Sheet
+    # Try FMP First
     url_inc = f"https://financialmodelingprep.com/api/v3/income-statement/{ticker_symbol}?period=annual&apikey={FMP_KEY}"
     url_bal = f"https://financialmodelingprep.com/api/v3/balance-sheet-statement/{ticker_symbol}?period=annual&apikey={FMP_KEY}"
     
-    inc_data = requests.get(url_inc).json()
-    bal_data = requests.get(url_bal).json()
+    try:
+        inc_data = requests.get(url_inc).json()
+        bal_data = requests.get(url_bal).json()
+        
+        # Check if FMP actually returned data (not an empty list or error message)
+        if isinstance(inc_data, list) and len(inc_data) > 0 and isinstance(bal_data, list) and len(bal_data) > 0:
+            max_years = min(len(inc_data), len(bal_data), 10)
+            for i in range(max_years - 1, -1, -1):
+                try:
+                    inc = inc_data[i]
+                    bal = bal_data[i]
+                    revenue = inc.get('revenue', 0)
+                    ebit = inc.get('operatingIncome', 0)
+                    net_income = inc.get('netIncome', 0)
+                    total_debt = bal.get('totalDebt', 0)
+                    total_equity = bal.get('totalStockholdersEquity', 1)
+                    current_liab = bal.get('totalCurrentLiabilities', 0)
+                    total_assets = bal.get('totalAssets', 0)
+                    year = int(inc.get('calendarYear', 2020))
+                    
+                    roce = round((ebit / (total_assets - current_liab)) * 100, 1) if (total_assets - current_liab) > 0 else 0
+                    debt_eq = round(total_debt / total_equity, 2) if total_equity > 0 else 0
+                    margin = round((net_income / revenue) * 100, 1) if revenue > 0 else 0
+                    
+                    history_text += f"\nYear {year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
+                    history_data.append({'year': year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq})
+                except:
+                    continue
+            if history_data:
+                print("✅ FMP data fetched successfully.")
+                return history_text, history_data
+    except:
+        pass # FMP failed, move to fallback
     
-    # FMP returns most recent year first. We reverse it to get oldest to newest (for 10-year trends)
-    max_years = min(len(inc_data), len(bal_data), 10)
-    
-    for i in range(max_years - 1, -1, -1):
+    # Fallback to Yahoo Finance (4-5 years)
+    print("⚠️ FMP failed or blocked. Falling back to Yahoo Finance (4-5 years).")
+    income_stmt = stock.financials.T
+    balance_sheet = stock.balance_sheet.T
+    for year in income_stmt.index[:4]:
         try:
-            inc = inc_data[i]
-            bal = bal_data[i]
-            
-            revenue = inc.get('revenue', 0)
-            ebit = inc.get('operatingIncome', 0)
-            net_income = inc.get('netIncome', 0)
-            total_debt = bal.get('totalDebt', 0)
-            total_equity = bal.get('totalStockholdersEquity', 1)
-            current_liab = bal.get('totalCurrentLiabilities', 0)
-            total_assets = bal.get('totalAssets', 0)
-            year = int(inc.get('calendarYear', 2020))
+            revenue = income_stmt.loc[year, 'Total Revenue'] if 'Total Revenue' in income_stmt.columns else 0
+            ebit = income_stmt.loc[year, 'EBIT'] if 'EBIT' in income_stmt.columns else 0
+            net_income = income_stmt.loc[year, 'Net Income'] if 'Net Income' in income_stmt.columns else 0
+            total_debt = balance_sheet.loc[year, 'Total Debt'] if 'Total Debt' in balance_sheet.columns else 0
+            total_equity = balance_sheet.loc[year, 'Stockholders Equity'] if 'Stockholders Equity' in balance_sheet.columns else 1
+            current_liab = balance_sheet.loc[year, 'Current Liabilities'] if 'Current Liabilities' in balance_sheet.columns else 0
+            total_assets = balance_sheet.loc[year, 'Total Assets'] if 'Total Assets' in balance_sheet.columns else 0
             
             roce = round((ebit / (total_assets - current_liab)) * 100, 1) if (total_assets - current_liab) > 0 else 0
             debt_eq = round(total_debt / total_equity, 2) if total_equity > 0 else 0
             margin = round((net_income / revenue) * 100, 1) if revenue > 0 else 0
             
-            history_text += f"\nYear {year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
-            history_data.append({'year': year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq})
+            history_text += f"\nYear {year.year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
+            history_data.append({'year': year.year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq})
         except:
             continue
-            
     return history_text, history_data
 
 def get_all_data_and_save(ticker_symbol, name, macro_tags):
@@ -93,8 +120,8 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
         'dividend_yield': info.get('dividendYield', 0)
     }
     
-    # 2. 10-Year Historical Data (Using FMP)
-    history_text, history_data = get_10_year_history(ticker_symbol)
+        # 2. 10-Year Historical Data (Using FMP, fallback to Yahoo)
+    history_text, history_data = get_10_year_history(ticker_symbol, stock)
 
     # 3. AI Buffett Thesis (Now fed with 10 years of data!)
     prompt1 = f"You are a rational value investor in the style of Warren Buffett. Analyze {name}. Current Price: {live_data['price']}, P/E: {live_data['pe_ratio']}, Div Yield: {live_data['dividend_yield']}. 10-Year Historical Trends: {history_text}. Write a 3-paragraph thesis on Moat, Financial Health, and Valuation."
