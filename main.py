@@ -41,7 +41,7 @@ companies_universe = {
 }
 
 def get_10_year_history(ticker_symbol, stock):
-    """Fetches 10 years of history from FMP. Falls back to 4 years of Yahoo if FMP fails."""
+    """Fetches up to 5-10 years of history. Falls back to Yahoo if FMP fails."""
     history_text = ""
     history_data = []
     
@@ -53,7 +53,6 @@ def get_10_year_history(ticker_symbol, stock):
         inc_data = requests.get(url_inc).json()
         bal_data = requests.get(url_bal).json()
         
-        # Check if FMP actually returned data (not an empty list or error message)
         if isinstance(inc_data, list) and len(inc_data) > 0 and isinstance(bal_data, list) and len(bal_data) > 0:
             max_years = min(len(inc_data), len(bal_data), 10)
             for i in range(max_years - 1, -1, -1):
@@ -74,20 +73,28 @@ def get_10_year_history(ticker_symbol, stock):
                     margin = round((net_income / revenue) * 100, 1) if revenue > 0 else 0
                     
                     history_text += f"\nYear {year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
-                    history_data.append({'year': year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq})
+                    # Convert raw numbers to ₹ Crores for the table
+                    history_data.append({
+                        'year': year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq,
+                        'Revenue': round(revenue / 10000000, 1),
+                        'EBIT': round(ebit / 10000000, 1),
+                        'Net_Income': round(net_income / 10000000, 1),
+                        'Total_Debt': round(total_debt / 10000000, 1),
+                        'Equity': round(total_equity / 10000000, 1)
+                    })
                 except:
                     continue
             if history_data:
                 print("✅ FMP data fetched successfully.")
                 return history_text, history_data
     except:
-        pass # FMP failed, move to fallback
+        pass
     
     # Fallback to Yahoo Finance (4-5 years)
-    print("⚠️ FMP failed or blocked. Falling back to Yahoo Finance (4-5 years).")
+    print("⚠️ FMP failed or blocked. Falling back to Yahoo Finance.")
     income_stmt = stock.financials.T
     balance_sheet = stock.balance_sheet.T
-    for year in income_stmt.index[:4]:
+    for year in income_stmt.index[:5]: # Grab last 5 years
         try:
             revenue = income_stmt.loc[year, 'Total Revenue'] if 'Total Revenue' in income_stmt.columns else 0
             ebit = income_stmt.loc[year, 'EBIT'] if 'EBIT' in income_stmt.columns else 0
@@ -102,7 +109,14 @@ def get_10_year_history(ticker_symbol, stock):
             margin = round((net_income / revenue) * 100, 1) if revenue > 0 else 0
             
             history_text += f"\nYear {year.year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
-            history_data.append({'year': year.year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq})
+            history_data.append({
+                'year': year.year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq,
+                'Revenue': round(revenue / 10000000, 1),
+                'EBIT': round(ebit / 10000000, 1),
+                'Net_Income': round(net_income / 10000000, 1),
+                'Total_Debt': round(total_debt / 10000000, 1),
+                'Equity': round(total_equity / 10000000, 1)
+            })
         except:
             continue
     return history_text, history_data
