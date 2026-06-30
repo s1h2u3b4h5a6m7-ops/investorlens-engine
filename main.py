@@ -105,7 +105,12 @@ def get_10_year_history(ticker_symbol, stock):
             
         for col in income_stmt.columns[:5]:
             try:
-                year = col.year
+                # FIX: Ensure we extract the year as an integer
+                if hasattr(col, 'year'):
+                    year = col.year
+                else:
+                    # Fallback if col is a string
+                    year = int(str(col)[:4])
                 
                 revenue = get_val(income_stmt, ['Total Revenue', 'Operating Revenue', 'Revenue'], col)
                 ebit = get_val(income_stmt, ['Operating Income', 'EBIT', 'Ebit'], col)
@@ -152,8 +157,10 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
     
     history_text, history_data = get_10_year_history(ticker_symbol, stock)
 
-    prompt1 = f"You are a rational value investor in the style of Warren Buffett. Analyze {name}. Current Price: {live_data['price']}, P/E: {live_data['pe_ratio']}, Div Yield: {live_data['dividend_yield']}. 10-Year Historical Trends: {history_text}. Write a 4-paragraph thesis. Paragraph 1: Moat & Business Quality (based on margins and ROCE). Paragraph 2: Financial Health & Capital Allocation (based on debt and growth). Paragraph 3: Valuation Rationality (based on P/E and P/B). Paragraph 4: Value Chain & Industry Structure (Where does this company sit between raw materials and the end customer? What gives it pricing power?)."
-    thesis = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt1}], model="llama-3.3-70b-versatile").choices[0].message.content
+    prompt1 = f"You are a rational value investor in the style of Warren Buffett. Analyze {name}. Current Price: {live_data['price']}, P/E: {live_data['pe_ratio']}, Div Yield: {live_data['dividend_yield']}. 10-Year Historical Trends: {history_text}. Write a 4-paragraph thesis. Paragraph 1: Moat & Business Quality. Paragraph 2: Financial Health & Capital Allocation. Paragraph 3: Valuation Rationality. Paragraph 4: Value Chain & Industry Structure."
+    
+    # OPTIMIZATION: Using Llama 3.1 8B to avoid the 429 rate limit errors. It is 5x faster and has massive free limits.
+    thesis = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt1}], model="llama3-8b-8192").choices[0].message.content
 
     query = urllib.parse.quote(f"{name} India stock")
     feed = feedparser.parse(f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en")
@@ -166,7 +173,7 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
     else: sentiment_label = "Neutral / Uncertain"
 
     prompt2 = f"You are a rational value investor. Analyze market pulse for {name}. News Sentiment: {avg_score:.2f} ({sentiment_label}). Headlines: {headlines[:5]}. Macro Risks: {macro_tags}. Write a 2-paragraph summary on Market Pulse and Macro Risks."
-    pulse = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt2}], model="llama-3.3-70b-versatile").choices[0].message.content
+    pulse = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt2}], model="llama3-8b-8192").choices[0].message.content
 
     # Red/Green Flag Engine
     red_flags = []
@@ -179,25 +186,4 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
         
         if latest['Debt'] < 0.5: green_flags.append("Low Debt/Equity (<0.5)")
         if latest['ROCE'] > 20: green_flags.append("Excellent ROCE (>20%)")
-        if latest['Margin'] > 10: green_flags.append("Healthy Net Margin (>10%)")
-
-    data_to_save = {
-        'ticker': ticker_symbol, 'name': name, 'live_price': live_data['price'],
-        'pe_ratio': live_data['pe_ratio'], 'pb_ratio': live_data['pb_ratio'],
-        'dividend_yield': live_data['dividend_yield'], 'history_summary': history_text,
-        'historical_data': history_data, 
-        'news_sentiment_score': avg_score, 'news_sentiment_label': sentiment_label,
-        'macro_tags': macro_tags, 'buffett_thesis': thesis, 'market_pulse': pulse,
-        'red_flags': red_flags, 'green_flags': green_flags
-    }
-    
-    supabase.table("company_reports").upsert(data_to_save).execute()
-    print(f"✅ {name} saved to database successfully!")
-    
-if __name__ == "__main__":
-    for ticker, data in companies_universe.items():
-        try:
-            get_all_data_and_save(ticker, data['name'], data['macro_tags'])
-            time.sleep(2)
-        except Exception as e:
-            print(f"Error processing {data['name']}: {e}")
+        if latest['Margin'] > 10: green_flags.append
