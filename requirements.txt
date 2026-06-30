@@ -2,3 +2,4 @@ yfinance
 groq
 supabase
 nltk
+feedparser
