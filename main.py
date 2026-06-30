@@ -21,8 +21,9 @@ nltk.download('vader_lexicon', quiet=True)
 sia = SentimentIntensityAnalyzer()
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- EXPANDED UNIVERSE (FMCG + IT) ---
+# --- NIFTY 50 UNIVERSE (Expanded) ---
 companies_universe = {
+    # FMCG Sector
     'ITC.NS': {'name': 'ITC Limited', 'sector': 'FMCG', 'macro_tags': ['Crude Oil (Packaging)', 'Rural Demand', 'Regulatory (Tobacco Tax)', 'INR/USD']},
     'HINDUNILVR.NS': {'name': 'Hindustan Unilever', 'sector': 'FMCG', 'macro_tags': ['Crude Oil (Packaging)', 'Palm Oil (Input)', 'Rural Demand', 'Commodity Inflation']},
     'NESTLEIND.NS': {'name': 'Nestle India', 'sector': 'FMCG', 'macro_tags': ['Milk Prices (Input)', 'Rural Demand', 'Wheat Prices', 'Supply Chain']},
@@ -33,9 +34,28 @@ companies_universe = {
     'PGHH.NS': {'name': 'Procter & Gamble Health', 'sector': 'FMCG', 'macro_tags': ['INR/USD', 'Crude Oil (Packaging)', 'API Prices']},
     'COLPAL.NS': {'name': 'Colgate Palmolive', 'sector': 'FMCG', 'macro_tags': ['Crude Oil (Packaging)', 'Rural Demand', 'Commodity Inflation']},
     'TATACONSUM.NS': {'name': 'Tata Consumer Products', 'sector': 'FMCG', 'macro_tags': ['Tea Prices (Input)', 'Rural Demand', 'Wheat Prices', 'INR/USD']},
+    
+    # IT Sector
     'TCS.NS': {'name': 'Tata Consultancy Services', 'sector': 'IT', 'macro_tags': ['INR/USD', 'US H1B Visa Policy', 'AI Disruption Risk', 'US Fed Rates']},
     'INFY.NS': {'name': 'Infosys', 'sector': 'IT', 'macro_tags': ['INR/USD', 'US Tech Spending', 'AI Disruption Risk', 'US Fed Rates']},
-    'WIPRO.NS': {'name': 'Wipro', 'sector': 'IT', 'macro_tags': ['INR/USD', 'US Tech Spending', 'AI Disruption Risk', 'US Fed Rates']}
+    'WIPRO.NS': {'name': 'Wipro', 'sector': 'IT', 'macro_tags': ['INR/USD', 'US Tech Spending', 'AI Disruption Risk', 'US Fed Rates']},
+    
+    # NEW: Diversified / Conglomerate
+    'RELIANCE.NS': {'name': 'Reliance Industries', 'sector': 'Conglomerate', 'macro_tags': ['Crude Oil (Refining)', 'Petrochemicals', 'Retail Spending', 'INR/USD']},
+    
+    # NEW: Banking & NBFC
+    'HDFCBANK.NS': {'name': 'HDFC Bank', 'sector': 'Banking', 'macro_tags': ['Repo Rate', 'Inflation', 'GDP Growth', 'NIM/Net Interest Margin']},
+    'BAJFINANCE.NS': {'name': 'Bajaj Finance', 'sector': 'NBFC', 'macro_tags': ['Repo Rate', 'Consumer Spending', 'NPA Cycle', 'Inflation']},
+    'SBIN.NS': {'name': 'State Bank of India', 'sector': 'Banking', 'macro_tags': ['Repo Rate', 'Government Spending', 'NIM/Net Interest Margin', 'GDP Growth']},
+    
+    # NEW: Auto
+    'TATAMOTORS.NS': {'name': 'Tata Motors', 'sector': 'Auto', 'macro_tags': ['Commodity Prices (Steel)', 'Semiconductors', 'EV Transition', 'Export Demand']},
+    
+    # NEW: Pharma
+    'SUNPHARMA.NS': {'name': 'Sun Pharmaceutical', 'sector': 'Pharma', 'macro_tags': ['US FDA Approvals', 'INR/USD', 'API Prices (China)', 'US Healthcare Spending']},
+    
+    # NEW: Paints/Chemicals
+    'ASIANPAINT.NS': {'name': 'Asian Paints', 'sector': 'Paints', 'macro_tags': ['Crude Oil (TiO2)', 'Real Estate Demand', 'Rural Demand', 'Commodity Inflation']}
 }
 
 def get_val(df, row_names, col):
@@ -125,6 +145,10 @@ def get_10_year_history(ticker_symbol, stock):
                 })
             except Exception as e:
                 continue
+        
+        # CRITICAL FIX: Reverse the list so years go Left to Right (Oldest to Newest)
+        history_data.reverse()
+        
     except Exception as e:
         print(f"❌ Yahoo Finance completely failed: {e}")
         
@@ -157,7 +181,6 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
     prompt2 = f"You are a rational value investor. Analyze market pulse for {name}. News Sentiment: {avg_score:.2f} ({sentiment_label}). Headlines: {headlines[:5]}. Macro Risks: {macro_tags}. Write a 2-paragraph summary on Market Pulse and Macro Risks."
     pulse = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt2}], model="llama-3.1-8b-instant").choices[0].message.content
 
-    # Red/Green Flag Engine (Converted to simple text strings)
     red_flags = []
     green_flags = []
     if history_data and len(history_data) > 0:
@@ -170,7 +193,6 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
         if latest['ROCE'] > 20: green_flags.append("Excellent ROCE (>20%)")
         if latest['Margin'] > 10: green_flags.append("Healthy Net Margin (>10%)")
 
-    # Convert lists to comma-separated strings for flawless DB insertion
     red_flags_str = ", ".join(red_flags) if red_flags else "None"
     green_flags_str = ", ".join(green_flags) if green_flags else "None"
 
