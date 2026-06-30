@@ -90,20 +90,26 @@ def get_10_year_history(ticker_symbol, stock):
     except:
         pass
     
-    # Fallback to Yahoo Finance (4-5 years)
+        # Fallback to Yahoo Finance (4-5 years) - Bulletproof version
     print("⚠️ FMP failed or blocked. Falling back to Yahoo Finance.")
-    income_stmt = stock.financials.T
-    balance_sheet = stock.balance_sheet.T
-    for year in income_stmt.index[:5]: # Grab last 5 years
+    income_stmt = stock.financials
+    balance_sheet = stock.balance_sheet
+    
+    # Yahoo gives 3-5 years in columns
+    for year in income_stmt.columns[:5]:
         try:
-            revenue = income_stmt.loc[year, 'Total Revenue'] if 'Total Revenue' in income_stmt.columns else 0
-            ebit = income_stmt.loc[year, 'EBIT'] if 'EBIT' in income_stmt.columns else 0
-            net_income = income_stmt.loc[year, 'Net Income'] if 'Net Income' in income_stmt.columns else 0
-            total_debt = balance_sheet.loc[year, 'Total Debt'] if 'Total Debt' in balance_sheet.columns else 0
-            total_equity = balance_sheet.loc[year, 'Stockholders Equity'] if 'Stockholders Equity' in balance_sheet.columns else 1
-            current_liab = balance_sheet.loc[year, 'Current Liabilities'] if 'Current Liabilities' in balance_sheet.columns else 0
-            total_assets = balance_sheet.loc[year, 'Total Assets'] if 'Total Assets' in balance_sheet.columns else 0
+            # Income Statement
+            revenue = income_stmt.loc['Total Revenue', year] if 'Total Revenue' in income_stmt.index else 0
+            ebit = income_stmt.loc['Operating Income', year] if 'Operating Income' in income_stmt.index else (income_stmt.loc['EBIT', year] if 'EBIT' in income_stmt.index else 0)
+            net_income = income_stmt.loc['Net Income', year] if 'Net Income' in income_stmt.index else 0
             
+            # Balance Sheet
+            total_debt = balance_sheet.loc['Total Debt', year] if 'Total Debt' in balance_sheet.index else 0
+            total_equity = balance_sheet.loc['Stockholders Equity', year] if 'Stockholders Equity' in balance_sheet.index else (balance_sheet.loc['Total Equity Gross Minority Interest', year] if 'Total Equity Gross Minority Interest' in balance_sheet.index else 1)
+            current_liab = balance_sheet.loc['Current Liabilities', year] if 'Current Liabilities' in balance_sheet.index else 0
+            total_assets = balance_sheet.loc['Total Assets', year] if 'Total Assets' in balance_sheet.index else 0
+            
+            # Calculations
             roce = round((ebit / (total_assets - current_liab)) * 100, 1) if (total_assets - current_liab) > 0 else 0
             debt_eq = round(total_debt / total_equity, 2) if total_equity > 0 else 0
             margin = round((net_income / revenue) * 100, 1) if revenue > 0 else 0
