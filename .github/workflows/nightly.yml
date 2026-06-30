@@ -4,18 +4,18 @@ on:
   schedule:
     # Runs at 15:00 UTC every day (8:30 PM IST)
     - cron: "0 15 * * *"
-  workflow_dispatch: # Allows you to run it manually by clicking a button
+  workflow_dispatch: # Allows you to run it manually
 
 jobs:
   update_database:
     runs-on: ubuntu-latest
 
-        steps:
+    steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -30,4 +30,5 @@ jobs:
         GROQ_KEY: ${{ secrets.GROQ_KEY }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        FMP_KEY: ${{ secrets.FMP_KEY }}
       run: python main.py
