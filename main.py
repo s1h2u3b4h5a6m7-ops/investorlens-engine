@@ -142,7 +142,7 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
     history_text, history_data = get_10_year_history(ticker_symbol, stock)
 
     prompt1 = f"You are a rational value investor in the style of Warren Buffett. Analyze {name}. Current Price: {live_data['price']}, P/E: {live_data['pe_ratio']}, Div Yield: {live_data['dividend_yield']}. 10-Year Historical Trends: {history_text}. Write a 4-paragraph thesis. Paragraph 1: Moat & Business Quality. Paragraph 2: Financial Health & Capital Allocation. Paragraph 3: Valuation Rationality. Paragraph 4: Value Chain & Industry Structure."
-    thesis = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt1}], model="llama3-8b-8192").choices[0].message.content
+    thesis = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt1}], model="llama-3.1-8b-instant").choices[0].message.content
 
     query = urllib.parse.quote(f"{name} India stock")
     feed = feedparser.parse(f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en")
@@ -155,7 +155,7 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
     else: sentiment_label = "Neutral / Uncertain"
 
     prompt2 = f"You are a rational value investor. Analyze market pulse for {name}. News Sentiment: {avg_score:.2f} ({sentiment_label}). Headlines: {headlines[:5]}. Macro Risks: {macro_tags}. Write a 2-paragraph summary on Market Pulse and Macro Risks."
-    pulse = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt2}], model="llama3-8b-8192").choices[0].message.content
+    pulse = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt2}], model="llama-3.1-8b-instant").choices[0].message.content
 
     # Red/Green Flag Engine (Converted to simple text strings)
     red_flags = []
