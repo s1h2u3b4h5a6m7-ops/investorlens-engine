@@ -8,6 +8,7 @@ import os
 import urllib.parse
 import time
 import requests
+import pandas as pd
 
 # --- SETUP KEYS FROM GITHUB SECRETS ---
 GROQ_KEY = os.environ.get("GROQ_KEY")
@@ -22,7 +23,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- EXPANDED UNIVERSE (FMCG + IT) ---
 companies_universe = {
-    # FMCG Sector
     'ITC.NS': {'name': 'ITC Limited', 'sector': 'FMCG', 'macro_tags': ['Crude Oil (Packaging)', 'Rural Demand', 'Regulatory (Tobacco Tax)', 'INR/USD']},
     'HINDUNILVR.NS': {'name': 'Hindustan Unilever', 'sector': 'FMCG', 'macro_tags': ['Crude Oil (Packaging)', 'Palm Oil (Input)', 'Rural Demand', 'Commodity Inflation']},
     'NESTLEIND.NS': {'name': 'Nestle India', 'sector': 'FMCG', 'macro_tags': ['Milk Prices (Input)', 'Rural Demand', 'Wheat Prices', 'Supply Chain']},
@@ -33,15 +33,21 @@ companies_universe = {
     'PGHH.NS': {'name': 'Procter & Gamble Health', 'sector': 'FMCG', 'macro_tags': ['INR/USD', 'Crude Oil (Packaging)', 'API Prices']},
     'COLPAL.NS': {'name': 'Colgate Palmolive', 'sector': 'FMCG', 'macro_tags': ['Crude Oil (Packaging)', 'Rural Demand', 'Commodity Inflation']},
     'TATACONSUM.NS': {'name': 'Tata Consumer Products', 'sector': 'FMCG', 'macro_tags': ['Tea Prices (Input)', 'Rural Demand', 'Wheat Prices', 'INR/USD']},
-    
-    # IT Sector
     'TCS.NS': {'name': 'Tata Consultancy Services', 'sector': 'IT', 'macro_tags': ['INR/USD', 'US H1B Visa Policy', 'AI Disruption Risk', 'US Fed Rates']},
     'INFY.NS': {'name': 'Infosys', 'sector': 'IT', 'macro_tags': ['INR/USD', 'US Tech Spending', 'AI Disruption Risk', 'US Fed Rates']},
     'WIPRO.NS': {'name': 'Wipro', 'sector': 'IT', 'macro_tags': ['INR/USD', 'US Tech Spending', 'AI Disruption Risk', 'US Fed Rates']}
 }
 
+def get_val(df, row_names, col):
+    """Helper to find a value in a Pandas DataFrame regardless of exact naming."""
+    if df is None or df.empty: return 0
+    for name in row_names:
+        if name in df.index:
+            val = df.loc[name, col]
+            if pd.notna(val): return val
+    return 0
+
 def get_10_year_history(ticker_symbol, stock):
-    """Fetches up to 5-10 years of history. Falls back to Yahoo if FMP fails."""
     history_text = ""
     history_data = []
     
@@ -89,40 +95,52 @@ def get_10_year_history(ticker_symbol, stock):
         pass
     
     print("⚠️ FMP failed or blocked. Falling back to Yahoo Finance.")
-    income_stmt = stock.financials
-    balance_sheet = stock.balance_sheet
-    
-    for year in income_stmt.columns[:5]:
-        try:
-            revenue = income_stmt.loc['Total Revenue', year] if 'Total Revenue' in income_stmt.index else 0
-            ebit = income_stmt.loc['Operating Income', year] if 'Operating Income' in income_stmt.index else (income_stmt.loc['EBIT', year] if 'EBIT' in income_stmt.index else 0)
-            net_income = income_stmt.loc['Net Income', year] if 'Net Income' in income_stmt.index else 0
+    try:
+        income_stmt = stock.financials
+        balance_sheet = stock.balance_sheet
+        
+        if income_stmt.empty or balance_sheet.empty:
+            print("❌ Yahoo Finance returned empty statements for", ticker_symbol)
+            return history_text, history_data
             
-            total_debt = balance_sheet.loc['Total Debt', year] if 'Total Debt' in balance_sheet.index else 0
-            total_equity = balance_sheet.loc['Stockholders Equity', year] if 'Stockholders Equity' in balance_sheet.index else (balance_sheet.loc['Total Equity Gross Minority Interest', year] if 'Total Equity Gross Minority Interest' in balance_sheet.index else 1)
-            current_liab = balance_sheet.loc['Current Liabilities', year] if 'Current Liabilities' in balance_sheet.index else 0
-            total_assets = balance_sheet.loc['Total Assets', year] if 'Total Assets' in balance_sheet.index else 0
-            
-            roce = round((ebit / (total_assets - current_liab)) * 100, 1) if (total_assets - current_liab) > 0 else 0
-            debt_eq = round(total_debt / total_equity, 2) if total_equity > 0 else 0
-            margin = round((net_income / revenue) * 100, 1) if revenue > 0 else 0
-            
-            history_text += f"\nYear {year.year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
-            history_data.append({
-                'year': year.year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq,
-                'Revenue': round(revenue / 10000000, 1),
-                'EBIT': round(ebit / 10000000, 1),
-                'Net_Income': round(net_income / 10000000, 1),
-                'Total_Debt': round(total_debt / 10000000, 1),
-                'Equity': round(total_equity / 10000000, 1)
-            })
-        except:
-            continue
+        for col in income_stmt.columns[:5]:
+            try:
+                year = col.year
+                
+                revenue = get_val(income_stmt, ['Total Revenue', 'Operating Revenue', 'Revenue'], col)
+                ebit = get_val(income_stmt, ['Operating Income', 'EBIT', 'Ebit'], col)
+                net_income = get_val(income_stmt, ['Net Income', 'Net Income Common Stockholders'], col)
+                
+                total_debt = get_val(balance_sheet, ['Total Debt', 'Long Term Debt'], col)
+                total_equity = get_val(balance_sheet, ['Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity'], col)
+                current_liab = get_val(balance_sheet, ['Current Liabilities'], col)
+                total_assets = get_val(balance_sheet, ['Total Assets'], col)
+                
+                if total_equity == 0: total_equity = 1 # Prevent division by zero
+                
+                roce = round((ebit / (total_assets - current_liab)) * 100, 1) if (total_assets - current_liab) > 0 else 0
+                debt_eq = round(total_debt / total_equity, 2)
+                margin = round((net_income / revenue) * 100, 1) if revenue > 0 else 0
+                
+                history_text += f"\nYear {year}: ROCE={roce}%, Net Margin={margin}%, Debt/Equity={debt_eq}"
+                history_data.append({
+                    'year': year, 'ROCE': roce, 'Margin': margin, 'Debt': debt_eq,
+                    'Revenue': round(revenue / 10000000, 1),
+                    'EBIT': round(ebit / 10000000, 1),
+                    'Net_Income': round(net_income / 10000000, 1),
+                    'Total_Debt': round(total_debt / 10000000, 1),
+                    'Equity': round(total_equity / 10000000, 1)
+                })
+            except Exception as e:
+                print(f"Error parsing Yahoo year {col}: {e}")
+                continue
+    except Exception as e:
+        print(f"❌ Yahoo Finance completely failed: {e}")
+        
     return history_text, history_data
 
 def get_all_data_and_save(ticker_symbol, name, macro_tags):
-    print(f"Processing {name}...")
-    
+    print(f"\n--- Processing {name} ---")
     stock = yf.Ticker(ticker_symbol)
     info = stock.info
     live_data = {
@@ -150,18 +168,15 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
     prompt2 = f"You are a rational value investor. Analyze market pulse for {name}. News Sentiment: {avg_score:.2f} ({sentiment_label}). Headlines: {headlines[:5]}. Macro Risks: {macro_tags}. Write a 2-paragraph summary on Market Pulse and Macro Risks."
     pulse = client_groq.chat.completions.create(messages=[{"role": "user", "content": prompt2}], model="llama-3.3-70b-versatile").choices[0].message.content
 
-    # --- NEW: AUTOMATED RED/GREEN FLAG ENGINE ---
+    # Red/Green Flag Engine
     red_flags = []
     green_flags = []
-    
     if history_data and len(history_data) > 0:
         latest = history_data[-1]
-        # Red Flag Logic
         if latest['Debt'] > 1.0: red_flags.append("High Debt/Equity (>1.0)")
         if latest['ROCE'] < 15: red_flags.append("Low ROCE (<15%)")
         if latest['Margin'] < 5: red_flags.append("Low Net Margin (<5%)")
         
-        # Green Flag Logic
         if latest['Debt'] < 0.5: green_flags.append("Low Debt/Equity (<0.5)")
         if latest['ROCE'] > 20: green_flags.append("Excellent ROCE (>20%)")
         if latest['Margin'] > 10: green_flags.append("Healthy Net Margin (>10%)")
@@ -173,7 +188,7 @@ def get_all_data_and_save(ticker_symbol, name, macro_tags):
         'historical_data': history_data, 
         'news_sentiment_score': avg_score, 'news_sentiment_label': sentiment_label,
         'macro_tags': macro_tags, 'buffett_thesis': thesis, 'market_pulse': pulse,
-        'red_flags': red_flags, 'green_flags': green_flags # <-- SAVED TO DB
+        'red_flags': red_flags, 'green_flags': green_flags
     }
     
     supabase.table("company_reports").upsert(data_to_save).execute()
